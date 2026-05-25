@@ -1,27 +1,3 @@
-'''
-# suma numeros mayores a 0
-def proceso(lista):
-    resultado = 0
-    for i in range(len(lista)):
-        if lista[i] > 0:
-            resultado += lista[i] * 1
-    return resultado
-
-# optimizacion de ciclo
-# primero nunca se invoca entonces seria eliminar el metodo
-# ahora si se invocara quedaria de la siguiente forma
-def procesoOptimizado(lista):
-    resultado = 0
-    for i in range(len(lista)):
-        if lista[i] > 0:
-            resultado += lista[i]
-    return resultado
-
-numeros = [1,2,3,4,5,6,7,8]
-print(procesoOptimizado(numeros))
-
-'''
-
 import serial
 import customtkinter as ctk
 from tkinter import messagebox
@@ -32,7 +8,10 @@ import time
 # CONFIGURACION GENERAL
 # =========================================
 
-PUERTO = "/dev/rfcomm0"
+# NOTA PARA UART (RX/TX): 
+# En Raspberry Pi (pines GPIO 14 y 15): usa "/dev/ttyS0" o "/dev/ttyAMA0"
+# Si usas un adaptador USB-a-UART en Linux: usa "/dev/ttyUSB0"
+PUERTO = "/dev/ttyS0" 
 BAUDIOS = 9600
 
 PELIGRO = "PELIGRO"
@@ -210,7 +189,7 @@ estado_label = ctk.CTkLabel(
 estado_label.pack(pady=15)
 
 # =========================================
-# ESTADO BLUETOOTH
+# ESTADO UART
 # =========================================
 
 conexion_label = ctk.CTkLabel(
@@ -573,76 +552,62 @@ def extraer_valores(linea):
         float(
             parte.split(":", 1)[1]
         )
-        for parte in partes
     )
 
 # =========================================
-# LECTURA SERIAL
+# LECTURA SERIAL (UART)
 # =========================================
 
 def leer_datos():
 
     try:
-
         with serial.Serial(
             PUERTO,
             BAUDIOS,
             timeout=1
         ) as ser:
 
+            # Limpia buffers iniciales para evitar datos corruptos al arrancar
+            ser.reset_input_buffer()
+            
             conexion_var.set(
-                "📶 BLUETOOTH CONECTADO"
+                "⚡ CONEXIÓN UART ACTIVA"
             )
 
             while True:
+                linea = ser.readline().decode('utf-8', errors='ignore').strip()
 
-                linea = ser.readline().decode().strip()
+                if linea:
+                    print("RECIBIDO (UART):", linea)
 
-                print(
-                    "RECIBIDO:",
-                    linea
-                )
+                    if linea.startswith("<") and linea.endswith(">"):
+                        try:
+                            temp, hum, nivel = extraer_valores(linea)
 
-                if (
-                    linea.startswith("<")
-                    and linea.endswith(">")
-                ):
-
-                    try:
-
-                        temp, hum, nivel = \
-                            extraer_valores(
-                                linea
+                            root.after(
+                                0,
+                                actualizar_interfaz,
+                                temp,
+                                hum,
+                                nivel
                             )
 
-                        root.after(
-                            0,
-                            actualizar_interfaz,
-                            temp,
-                            hum,
-                            nivel
-                        )
+                        except Exception as e:
+                            print("ERROR PARSEANDO DATOS UART:", e)
 
-                    except Exception as e:
-
-                        print(
-                            "ERROR PARSEANDO:",
-                            e
-                        )
-
-                time.sleep(2)
+                time.sleep(0.1)  # UART puede responder más rápido que Bluetooth, reducimos el retardo.
 
     except Exception as e:
 
         conexion_var.set(
-            "❌ BLUETOOTH DESCONECTADO"
+            "❌ UART DESCONECTADO / ERROR DE PUERTO"
         )
 
         root.after(
             0,
             lambda: messagebox.showerror(
-                "ERROR BLUETOOTH",
-                f"No se pudo conectar.\n\n{e}"
+                "ERROR CONEXIÓN UART",
+                f"No se pudo abrir el puerto serie.\n\nVerifica que no esté en uso y tengas permisos.\n\nDetalle: {e}"
             )
         )
 
